@@ -283,7 +283,7 @@ def _process_audio_in_background(
                                         instance_dict, instance_value
                                     )
 
-                                    endpoint = f"projects/{cfg.PROJECT_ID}/locations/global/publishers/google/models/lyria-002"
+                                    endpoint = f"projects/{cfg.PROJECT_ID}/locations/{cfg.LOCATION}/publishers/google/models/lyria-002"
                                     response = await asyncio.to_thread(
                                         ai_client.predict,
                                         endpoint=endpoint,
