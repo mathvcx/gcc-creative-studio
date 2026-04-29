@@ -106,6 +106,80 @@ resource "google_service_networking_connection" "private_vpc_connection" {
   reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
 }
 
+# --- Bastion Host (For Secure Administration & Bootstrap) ---
+resource "google_service_account" "bastion_sa" {
+  account_id   = "cs-${var.environment}-bastion"
+  display_name = "Bastion Host Service Account"
+}
+
+resource "google_project_iam_member" "bastion_log_writer" {
+  project = var.gcp_project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.bastion_sa.email}"
+}
+
+resource "google_project_iam_member" "bastion_cloudsql_client" {
+  project = var.gcp_project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.bastion_sa.email}"
+}
+
+resource "google_compute_instance" "bastion" {
+  name         = "cs-${var.environment}-bastion"
+  machine_type = "e2-micro"
+  zone         = "${var.gcp_region}-a"
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-12"
+    }
+  }
+
+  network_interface {
+    network    = google_compute_network.vpc.id
+    subnetwork = google_compute_subnetwork.cloud_run_egress.id
+    # No public IP for enhanced security
+  }
+
+  service_account {
+    email  = google_service_account.bastion_sa.email
+    scopes = ["cloud-platform"]
+  }
+
+  metadata = {
+    block-project-ssh-keys = "true"
+  }
+}
+
+# Firewall rule to allow IAP TCP forwarding to the bastion
+resource "google_compute_firewall" "allow_iap_ssh" {
+  name    = "cs-${var.environment}-allow-iap-ssh"
+  network = google_compute_network.vpc.id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = ["35.235.240.0/20"] # IAP range
+  target_service_accounts = [google_service_account.bastion_sa.email]
+}
+
+# Cloud NAT for the bastion to reach the internet for basic updates/tools
+resource "google_compute_router" "router" {
+  name    = "cs-${var.environment}-router"
+  region  = var.gcp_region
+  network = google_compute_network.vpc.id
+}
+
+resource "google_compute_router_nat" "nat" {
+  name                               = "cs-${var.environment}-nat"
+  router                             = google_compute_router.router.name
+  region                             = var.gcp_region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+}
+
 # Postgres Database related
 # 1. Read the Secret (Created by Bootstrap script)
 data "google_secret_manager_secret_version" "db_password" {

@@ -132,10 +132,9 @@ read_state() {
 
 # --- Database Connectivity Helpers ---
 start_sql_proxy() {
-    info "Starting Cloud SQL Auth Proxy..."
+    info "Resolving Cloud SQL Instance Connection Name..."
     
     # 1. Get Instance Connection Name
-    # Try Terraform output first, fallback to gcloud
     pushd "$REPO_ROOT/infra/environments/$ENV_NAME" > /dev/null
     DB_INSTANCE_NAME=$(terraform output -raw cloud_sql_connection_name 2>/dev/null)
     popd > /dev/null
@@ -149,37 +148,55 @@ start_sql_proxy() {
     fi
 
     export INSTANCE_CONNECTION_NAME="$DB_INSTANCE_NAME"
+    info "Using Instance: ${C_YELLOW}$INSTANCE_CONNECTION_NAME${C_RESET}"
 
-    # 2. Download Proxy (if missing)
-    if [ ! -f "cloud-sql-proxy" ]; then
-        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64
-        chmod +x cloud-sql-proxy
-    fi
+    # 2. Detect if instance is Private IP only
+    local IP_TYPES=$(gcloud sql instances describe "$DB_INSTANCE_NAME" --project="$GCP_PROJECT_ID" --format="value(ipAddresses.type)")
+    if [[ "$IP_TYPES" == "PRIVATE" && "$IP_TYPES" != *"PRIMARY"* ]]; then
+        warn "Cloud SQL instance is configured with Private IP only. Setting up IAP tunnel..."
+        
+        local BASTION_NAME="cs-$ENV_NAME-bastion"
+        local BASTION_ZONE=$(gcloud compute instances list --project="$GCP_PROJECT_ID" --filter="name:$BASTION_NAME" --format="value(zone)" | head -n 1)
+        local DB_PRIVATE_IP=$(gcloud sql instances describe "$DB_INSTANCE_NAME" --project="$GCP_PROJECT_ID" --format="value(ipAddresses.filter(type:PRIVATE).ipAddress)")
 
-    # 3. Start Proxy in Background (Port 5432)
-    ./cloud-sql-proxy --address 0.0.0.0 --port 5432 --private-ip "$DB_INSTANCE_NAME" > cloud-sql-proxy.log 2>&1 &
-    PROXY_PID=$!
-    export PROXY_PID
-    
-    # 4. Wait for Readiness
-    echo -n "   Waiting for proxy connection..."
-    for i in {1..30}; do
-        if (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1; then
-            echo " Connected!"
-            return 0
+        if [ -z "$BASTION_ZONE" ]; then
+            fail "Bastion host '$BASTION_NAME' not found. Private IP connectivity requires a bastion host."
         fi
-        echo -n "."
-        sleep 1
-    done
-    echo
-    warn "Proxy connection check timed out, but proceeding..."
+
+        info "Starting IAP tunnel via ${C_YELLOW}$BASTION_NAME${C_RESET} ($BASTION_ZONE) to ${C_YELLOW}$DB_PRIVATE_IP:5432${C_RESET}..."
+        
+        # Use a non-standard local port to avoid conflicts with local Postgres
+        export TUNNEL_PORT=5433
+        
+        # Start the tunnel in the background
+        gcloud compute ssh "$BASTION_NAME" \
+            --project="$GCP_PROJECT_ID" \
+            --zone="$BASTION_ZONE" \
+            --tunnel-through-iap \
+            -- -N -L "$TUNNEL_PORT:$DB_PRIVATE_IP:5432" &
+        
+        TUNNEL_PID=$!
+        export TUNNEL_PID
+        
+        # Give it a moment to establish
+        sleep 5
+        
+        # Override connection vars to use the tunnel
+        export DB_HOST="127.0.0.1"
+        export DB_PORT="$TUNNEL_PORT"
+        export USE_CLOUD_SQL_AUTH_PROXY=true # Force SQLAlchemy to use host/port instead of connector
+        success "IAP Tunnel established (PID: $TUNNEL_PID). Connecting via localhost:$TUNNEL_PORT"
+    else
+        info "Cloud SQL has a Public IP. Using direct Python Connector."
+        export USE_CLOUD_SQL_AUTH_PROXY=false
+    fi
 }
 
 stop_sql_proxy() {
-    if [ -n "$PROXY_PID" ]; then
-        info "Stopping Cloud SQL Proxy..."
-        kill "$PROXY_PID" 2>/dev/null || true
-        unset PROXY_PID
+    if [ -n "$TUNNEL_PID" ]; then
+        info "Stopping IAP tunnel (PID: $TUNNEL_PID)..."
+        kill "$TUNNEL_PID" 2>/dev/null || true
+        unset TUNNEL_PID
     fi
 }
 
@@ -190,9 +207,7 @@ export_db_vars() {
     export DB_USER="studio_user"
     export DB_PASS="$DB_PASS"
     export DB_NAME="creative_studio"
-    export DB_HOST="127.0.0.1" # Proxy address
-    export DB_PORT="5432"
-    export USE_CLOUD_SQL_AUTH_PROXY=true
+    # Note: DB_HOST/PORT defaults are set in start_sql_proxy if a tunnel is used
 }
 
 # --- Script Functions ---

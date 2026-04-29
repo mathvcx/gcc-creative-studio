@@ -1,0 +1,8 @@
+2026/04/29 16:33:01 Authorizing with Application Default Credentials
+2026/04/29 16:33:01 [prj-analytics-agentspace-prd:us-central1:creative-studio-db-d49f4cd2] Listening on [::]:5432
+2026/04/29 16:33:01 The proxy has started successfully and is ready for new connections!
+2026/04/29 16:33:02 [prj-analytics-agentspace-prd:us-central1:creative-studio-db-d49f4cd2] accepted connection from 127.0.0.1:35052
+2026/04/29 16:33:14 [prj-analytics-agentspace-prd:us-central1:creative-studio-db-d49f4cd2] accepted connection from 127.0.0.1:54432
+2026/04/29 16:33:32 [prj-analytics-agentspace-prd:us-central1:creative-studio-db-d49f4cd2] failed to connect to instance: Dial error: failed to dial (connection name = "prj-analytics-agentspace-prd:us-central1:creative-studio-db-d49f4cd2"): dial tcp 10.162.0.3:3307: i/o timeout
+2026/04/29 16:33:44 [prj-analytics-agentspace-prd:us-central1:creative-studio-db-d49f4cd2] failed to connect to instance: Dial error: failed to dial (connection name = "prj-analytics-agentspace-prd:us-central1:creative-studio-db-d49f4cd2"): dial tcp 10.162.0.3:3307: i/o timeout
+2026/04/29 16:33:44 SIGTERM signal received. Shutting down...
