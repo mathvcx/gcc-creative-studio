@@ -18,7 +18,7 @@ resource "random_id" "db_name_suffix" {
 
 resource "google_sql_database_instance" "default" {
   name             = "creative-studio-db-${random_id.db_name_suffix.hex}"
-  database_version = "POSTGRES_17" # Latest stable version
+  database_version = "POSTGRES_18" # Latest stable version
   region           = var.region
   project          = var.project_id
 
