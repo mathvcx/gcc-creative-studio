@@ -78,6 +78,33 @@ resource "google_cloudbuildv2_repository" "source_repo" {
   remote_uri        = "https://github.com/${var.github_repo_owner}/${var.github_repo_name}.git"
 }
 
+# --- Networking (Private IP Enforcement) ---
+resource "google_compute_network" "vpc" {
+  name                    = "cs-${var.environment}-vpc"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "cloud_run_egress" {
+  name          = "cs-${var.environment}-cr-egress"
+  ip_cidr_range = "10.0.0.0/28"
+  region        = var.gcp_region
+  network       = google_compute_network.vpc.id
+}
+
+resource "google_compute_global_address" "private_ip_address" {
+  name          = "cs-${var.environment}-private-ip"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.vpc.id
+}
+
+resource "google_service_networking_connection" "private_vpc_connection" {
+  network                 = google_compute_network.vpc.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
+}
+
 # Postgres Database related
 # 1. Read the Secret (Created by Bootstrap script)
 data "google_secret_manager_secret_version" "db_password" {
@@ -94,6 +121,9 @@ module "postgresql" {
   
   # Pass the ACTUAL value to create the user
   db_password = data.google_secret_manager_secret_version.db_password.secret_data
+
+  vpc_network_id = google_compute_network.vpc.id
+  depends_on     = [google_service_networking_connection.private_vpc_connection]
 }
 
 # --- Service Module Calls ---
@@ -132,6 +162,10 @@ module "backend_service" {
   
   # Pass the Secret ID reference (NOT the value) for Cloud Run
   db_secret_id              = "creative-studio-db-password"
+
+  # VPC networking
+  vpc_network_id  = google_compute_network.vpc.id
+  vpc_subnet_name = google_compute_subnetwork.cloud_run_egress.name
 }
 
 resource "google_firebase_project" "default" {

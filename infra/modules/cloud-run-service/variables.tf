@@ -129,3 +129,15 @@ variable "db_secret_id" {
 }
 variable "db_name" { type = string }
 variable "db_user" { type = string }
+
+variable "vpc_network_id" {
+  type        = string
+  description = "The ID of the VPC network for Direct VPC egress."
+  default     = null
+}
+
+variable "vpc_subnet_name" {
+  type        = string
+  description = "The name of the subnet for Direct VPC egress."
+  default     = null
+}

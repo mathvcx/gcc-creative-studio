@@ -114,6 +114,15 @@ resource "google_cloud_run_v2_service" "this" {
         mount_path = "/cloudsql"
       }
     }
+
+    vpc_access {
+      network_interfaces {
+        network    = var.vpc_network_id
+        subnetwork = var.vpc_subnet_name
+      }
+      egress = "PRIVATE_RANGES_ONLY"
+    }
+
     scaling {
       min_instance_count = var.scaling_min_instances
       max_instance_count = var.scaling_max_instances
