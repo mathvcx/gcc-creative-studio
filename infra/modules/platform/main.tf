@@ -206,6 +206,7 @@ module "frontend_secrets" {
   source = "../secret-manager"
 
   gcp_project_id    = var.gcp_project_id
+  gcp_region        = var.gcp_region
   secret_names      = var.frontend_secrets
   accessor_sa_email = module.frontend_service.trigger_sa_email
 }
@@ -214,6 +215,7 @@ module "backend_secrets" {
   source = "../secret-manager"
 
   gcp_project_id    = var.gcp_project_id
+  gcp_region        = var.gcp_region
   secret_names      = var.backend_secrets
   accessor_sa_email = module.backend_service.trigger_sa_email
 }

@@ -26,3 +26,8 @@ variable "accessor_sa_email" {
   type        = string
   description = "The email of the service account that will be granted accessor permission."
 }
+
+variable "gcp_region" {
+  type = string
+  description = "The GCP region for secret replication (to avoid Org Policy constraints)."
+}
