@@ -86,9 +86,10 @@ resource "google_compute_network" "vpc" {
 
 resource "google_compute_subnetwork" "cloud_run_egress" {
   name          = "cs-${var.environment}-cr-egress"
-  ip_cidr_range = "10.0.0.0/28"
+  ip_cidr_range = "10.1.0.0/24"
   region        = var.gcp_region
   network       = google_compute_network.vpc.id
+  private_ip_google_access = true
 }
 
 resource "google_compute_global_address" "private_ip_address" {
